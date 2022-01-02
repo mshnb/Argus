@@ -17,7 +17,7 @@
 
 #define Clamp(x, a, b) (x < b ? (x > a ? x : a) : b)
 #define Round(X) ((X < 0) ? 0 : ((X > 1) ? 1 : X))
-#define Interp(x1, x2, t) (x1 + (x2 - x1) * round(t))
+#define Interp(x1, x2, t) (x1 + (x2 - x1) * t)
 
 #define PRINT(print_type, ...) printf("[%c] line %d in function %s:", print_type, __LINE__, FN_NAME);printf(__VA_ARGS__);printf("\n")
 
@@ -40,10 +40,9 @@ typedef union Color
 	}argb;
 
 	Color() { argb.a = argb.r = argb.g = argb.b = 0; }
-	Color(uint8_t c)
+	Color(int c)
 	{
-		argb.a = 0;
-		argb.r = argb.g = argb.b = c;
+		iValue = c;
 	}
 
 	Color(uint8_t r, uint8_t g, uint8_t b)
@@ -106,6 +105,12 @@ public:
 		this->y = input.y;
 		return *this;
 	}
+
+	void interp(vec2& a, vec2& b, float alpha)
+	{
+		this->x = Interp(a.x, b.x, alpha);
+		this->y = Interp(a.y, b.y, alpha);
+	}
 };
 
 typedef class vec3 : public glm::vec3
@@ -131,6 +136,13 @@ public:
 		this->y = input.y;
 		this->z = input.z;
 		return *this;
+	}
+
+	void interp(vec3& a, vec3& b, float alpha)
+	{
+		this->x = Interp(a.x, b.x, alpha);
+		this->y = Interp(a.y, b.y, alpha);
+		this->z = Interp(a.z, b.z, alpha);
 	}
 };
 
@@ -167,6 +179,11 @@ public:
 		return glm::vec3(x, y, z);
 	}
 
+	void interp(vec4& a, vec4& b, float alpha)
+	{
+		this->x = Interp(a.x, b.x, alpha);
+		this->y = Interp(a.y, b.y, alpha);
+		this->z = Interp(a.z, b.z, alpha);
+		//this->w = Interp(a.w, b.w, alpha);
+	}
 };
-
-

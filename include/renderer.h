@@ -7,22 +7,23 @@ class Model;
 struct VertexData
 {
 	vec4 position;
-	vec3 normal;
+	vec4 normal;
 	vec2 texcoord;
 
-	vec4 world_pos;
-	vec4 clip_pos;
 	vec2 screen_pos;
+
+	void interp(VertexData& a, VertexData& b, float alpha)
+	{
+		//position.interp(a.position, b.position, alpha);
+		position.w = Interp(a.position.w, b.position.w, alpha);//TODO
+		normal.interp(a.normal, b.normal, alpha);
+		texcoord.interp(a.texcoord, b.texcoord, alpha);
+		screen_pos.interp(a.screen_pos, b.screen_pos, alpha);
+	}
 };
 
 class Renderer
 {
-	enum RenderType
-	{
-		Wireframe,
-		Polygon
-	};
-
 public:
 	Renderer() = delete;
 	Renderer(int w, int h);
@@ -53,16 +54,23 @@ private:
 	glm::mat4 mProjection;
 	//glm::mat4 mTbn;
 
-	inline void drawPixel(int x, int y, Color& color);
+	inline void drawPixel(int x, int y, Color color);
 	//bresenham
-	void drawLine(vec2& p1, vec2& p2, Color& color);
+	void drawLine(vec2& p1, vec2& p2, Color color);
 	void drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3);
+	void Renderer::drawScanLine(VertexData& v1, VertexData& v2);
 
 	void pos2Screen(VertexData& v);
 	int clip(vec4& clip_pos);
 
 public:
-	RenderType rType = RenderType::Wireframe;
+	enum RenderType
+	{
+		Wireframe,
+		Polygon,
+		Count
+	};
+	int rType = RenderType::Wireframe;
 	Camera* camera = NULL;
 	std::vector<Model> vModels;
 };

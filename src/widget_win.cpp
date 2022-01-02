@@ -7,15 +7,26 @@ Widget* widget = NULL;
 //处理窗体过程事件
 static LRESULT CALLBACK widget_events(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 {
+//	static POINT temp;
 	switch (msg) 
 	{
 	case WM_CLOSE: widget->widget_exit = 1; break;
 	case WM_KEYDOWN: widget->widget_keys[wParam & 511] = 1; break;
 	case WM_KEYUP: widget->widget_keys[wParam & 511] = 0; break;
+	case WM_LBUTTONDOWN:
+// 		get_mouse_pos(temp);
+// 		widget->mouse_info.pos.x = temp.x;
+// 		widget->mouse_info.pos.y = temp.y;
+		widget->mouse_info.left_pressed = true;
+		break;
+	case WM_LBUTTONUP:
+
+		widget->mouse_info.left_pressed = false;
+		break;
 	default:
 		return DefWindowProc(hWnd, msg, wParam, lParam);
 	}
-	//screen_keys[VK_ESCAPE] == 0
+
 	return 0;
 }
 
@@ -29,46 +40,6 @@ void widget_dispatch()
 		if (!GetMessage(&msg, NULL, 0, 0)) break;
 		DispatchMessage(&msg);
 	}
-
-	//处理键盘操作
-// 	if (screen_keys[VK_UP]) pos += 0.01f;
-// 	if (screen_keys[VK_DOWN]) pos -= 0.01f;
-// 	if (screen_keys[VK_LEFT]) rotation += 0.01f;
-// 	if (screen_keys[VK_RIGHT]) rotation -= 0.01f;
-// 	if (screen_keys[VK_SPACE]) {
-// 		int rd = renderer.render_type;
-// 		if (rd < RENDER_TYPE_TEXTURE)
-// 			rd = rd << 1;
-// 		else
-// 			rd = RENDER_TYPE_WIREFRAME;
-// 		renderer.render_type = rd;
-// 		screen_keys[VK_SPACE] = 0;
-// 	}
-// 	if (screen_keys[VK_F1]) {
-// 		renderer.sampleTag++;
-// 		screen_keys[VK_F1] = 0;
-// 	}
-// 	if (screen_keys[VK_F2]) {
-// 		renderer.lightTag++;
-// 		screen_keys[VK_F2] = 0;
-// 	}
-// 	if (screen_keys[VK_F3]) {
-// 		renderer.normalTextureTag++;
-// 		screen_keys[VK_F3] = 0;
-// 	}
-// 	if (screen_keys[VK_F4]) {
-// 		renderer.modelTag++;
-// 		renderer.modelTag = renderer.modelTag % modelList.size();
-// 		if (renderer.modelTag)
-// 			pos = 100;
-// 		else
-// 			pos = 3;
-// 		currentModel = &modelList.at(renderer.modelTag);
-// 		//设置当前纹理
-// 		renderer.texture = &currentModel->texture;
-// 		renderer.normalTexture = &currentModel->normalTexture;
-// 		screen_keys[VK_F4] = 0;
-// 	}
 }
 
 //关闭窗体
@@ -198,10 +169,16 @@ int cal_fps(long dur)
 
 	int fps = 0;
 	if (dur == 0)
-		avgDur = 0;
+		avgDur = 1;
 	else
 		avgDur = avgDur * (1 - alpha) + dur * alpha;
 	fps = (int)(1.0 / avgDur * CLOCKS_PER_SEC + 0.5);
 
 	return Clamp(fps, 0, 1000);
+}
+
+void get_mouse_pos(POINT& p)
+{
+	GetCursorPos(&p);
+	ScreenToClient(widget->widget_handle, &p);
 }

@@ -4,6 +4,13 @@
 
 #include "tools.h"
 
+struct Mouse
+{
+	vec2 pos;
+	bool left_pressed = false;
+	float wheel_delta = 0.0f;
+};
+
 struct Widget
 {
 	HWND widget_handle = NULL;		// 主窗口 HWND
@@ -19,8 +26,7 @@ struct Widget
 
 	int widget_exit = 0;
 
-	//char buttons[2];
-	//mouse_t mouse_info;
+	Mouse mouse_info;
 	int current_text_offset = 0;
 };
 
@@ -34,3 +40,4 @@ void widget_destroy();
 void widget_print(std::string content);
 
 int cal_fps(long dur);
+void get_mouse_pos(POINT& p);

@@ -34,8 +34,8 @@ public:
 	//Texture* normal = NULL;
 
 	int nVertex;
-	std::vector<glm::vec3> vPositions;
-	std::vector<glm::vec3> vNormals;
-	std::vector<glm::vec2> vTexcoords;
+	std::vector<vec3> vPositions;
+	std::vector<vec3> vNormals;
+	std::vector<vec2> vTexcoords;
 	std::vector<Triangle> vTriangles;
 };

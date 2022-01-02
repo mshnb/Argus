@@ -9,15 +9,15 @@ Renderer::Renderer(int w, int h)
 	buffer_length = w * h;
 	zbuffer = new float[buffer_length];
 
-	mModel = glm::mat4(1.0f);
-	mView = glm::mat4(1.0f);
+	mModel = glm::mat4x4(1.0f);
+	mView = glm::mat4x4(1.0f);
 	mProjection = glm::mat4(1.0f);
 
 	camera = new Camera();
 	clearDepthBuffer();
 
 	//TODO
-	camera->Position = glm::vec3(1.0f, 1.0f, 1.0f);
+	camera->Position = glm::vec3(-3.0f, 0.0f, 0.0f);
 	mView = camera->GetViewMatrix();
 	mProjection = glm::perspective(glm::radians(camera->Zoom), (float)w / (float)h, 0.1f, 100.0f);
 }
@@ -113,6 +113,9 @@ void Renderer::loadCude()
 
 void Renderer::draw()
 {
+	//TODO
+	mView = camera->GetViewMatrix();
+
 	static VertexData vd[3];
 	for (int i = 0; i < vModels.size(); i++)
 	{
@@ -130,19 +133,22 @@ void Renderer::draw()
 				vd[k].position.w = 1.0f;
 
 				vd[k].normal = model.vNormals[v.iNormal];
+				vd[k].normal.w = 0.0f;
+
 				vd[k].texcoord = model.vTexcoords[v.iTexcoord];
 			}
+
 			drawTriangle(vd[0], vd[1], vd[2]);
 		}
 	}
 }
 
-inline void Renderer::drawPixel(int x, int y, Color& color)
+inline void Renderer::drawPixel(int x, int y, Color color)
 {
 	framebuffer[y * widget_width + x] = color;
 }
 
-void Renderer::drawLine(vec2& p1, vec2& p2, Color& color)
+void Renderer::drawLine(vec2& p1, vec2& p2, Color color)
 {
 	int dx = p2.x - p1.x;
 	int dy = p2.y - p1.y;
@@ -155,7 +161,7 @@ void Renderer::drawLine(vec2& p1, vec2& p2, Color& color)
 
 	if (dx > dy) 
 	{
-		for (; x != p2.x; x += ux)
+		for (; x != (int)p2.x; x += ux)
 		{
 			drawPixel(x, y, color);
 			eps += dy;
@@ -167,7 +173,7 @@ void Renderer::drawLine(vec2& p1, vec2& p2, Color& color)
 		}
 	}
 	else {
-		for (; y != p2.y; y += uy)
+		for (; y != (int)p2.y; y += uy)
 		{
 			drawPixel(x, y, color);
 			eps += dx;
@@ -183,53 +189,55 @@ void Renderer::drawLine(vec2& p1, vec2& p2, Color& color)
 //TODO
 void Renderer::pos2Screen(VertexData& v)
 {
-	float w = v.clip_pos.w;
-	if (abs(w) < 1e-3) return;
+	float w = v.position.w;
+	if (abs(w) < 1e-4) return;
 
 	//透视除法
 	float onePerW = 1.0f / w;
-	v.screen_pos = v.clip_pos * onePerW;
+	v.position = v.position * onePerW;
+	v.position.w = onePerW;//save depth info for depth test
 
 	//转化至屏幕坐标
-	v.screen_pos.x = (v.screen_pos.x + 1.0f) * 0.5f * widget_width;
-	v.screen_pos.y = (1.0f - v.screen_pos.y) * 0.5f * widget_height;
+	v.screen_pos.x = (v.position.x + 1.0f) * 0.5f * widget_width;
+	v.screen_pos.y = (1.0f - v.position.y) * 0.5f * widget_height;
 }
 
 int Renderer::clip(vec4& clip_pos)
 {
 	float w = clip_pos.w;//原来的z
-	if (clip_pos[0] > w || clip_pos[0] < -w) return 1;
-	if (clip_pos[1] > w || clip_pos[1] < -w) return 1;
-	if (clip_pos[2] > w || clip_pos[2] < 0.0f) return 1;
+	if (clip_pos.x > w || clip_pos.x < -w) return 1;
+	if (clip_pos.y > w || clip_pos.y < -w) return 1;
+	if (clip_pos.z > w || clip_pos.z < 0.0f) return 1;
 	return 0;
 }
 
 void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 {
-	//calculate world pos
-	v1.world_pos = mModel * v1.position;
-	v2.world_pos = mModel * v2.position;
-	v3.world_pos = mModel * v3.position;
+	//local pos to world pos
+	v1.position = mModel * v1.position;
+	v2.position = mModel * v2.position;
+	v3.position = mModel * v3.position;
 
 	//背面消隐 正面看该三角形时 顶点顺序需满足 v1,v2,v3呈逆时针
 	if (rType != RenderType::Wireframe) 
 	{
-		vec3 u(v2.world_pos - v1.world_pos), v(v3.world_pos - v1.world_pos);
-		glm::vec3 norl = glm::cross(u, v), view = camera->Position - v1.world_pos.xyz();
+		vec3 u(v2.position - v1.position), v(v3.position - v1.position);
+		glm::vec3 norl = glm::cross(u, v), view = camera->Position - v1.position.xyz();
 		float ans = glm::dot(norl, view);
 		if (ans > 0) return;
 	}
 
 	//TODO
-	//世界坐标->相机坐标->齐次裁剪坐标
-	v1.clip_pos = mProjection * mView * v1.world_pos;
-	v2.clip_pos = mProjection * mView * v2.world_pos;
-	v3.clip_pos = mProjection * mView * v3.world_pos;
+	//world pos to clip pos
+	glm::mat4 pv = mProjection * mView;
+	v1.position = pv * v1.position;
+	v2.position = pv * v2.position;
+	v3.position = pv * v3.position;
 
 	//粗略的裁剪 
-	if (clip(v1.clip_pos) || clip(v2.clip_pos) || clip(v3.clip_pos)) return;
+	if (clip(v1.position) || clip(v2.position) || clip(v3.position)) return;
 
-	//齐次裁剪坐标->屏幕坐标
+	//clip pos to screen pos
 	pos2Screen(v1);
 	pos2Screen(v2);
 	pos2Screen(v3);
@@ -244,81 +252,81 @@ void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 	}
 	else
 	{
-		//TODO
-		// 
-		//使用世界矩阵的逆矩阵的转置调整法线
-// 		t1.normal = t1.normal * transform.worldInvTranspose;
-// 		t2.normal = t2.normal * transform.worldInvTranspose;
-// 		t3.normal = t3.normal * transform.worldInvTranspose;
 
-/*
-		onePerW = position[3] == 0.0f ? 1.0f : 1.0f / position[3];
-		u *= onePerW;
-		v *= onePerW;
+// 		glm::mat4 world_inverse_transpose = glm::transpose(glm::inverse(mModel));
+// 		v1.normal = world_inverse_transpose * v1.normal;
+// 		v2.normal = world_inverse_transpose * v2.normal;
+// 		v3.normal = world_inverse_transpose * v3.normal;
 
-		worldP.m_array[0] *= onePerW;
-		worldP.m_array[1] *= onePerW;
-		worldP.m_array[2] *= onePerW;
+		//sort by y to get v1.y < v2.y < v3.y
+		if (v1.screen_pos.y > v2.screen_pos.y)
+			std::swap(v1, v2);
+		if (v1.screen_pos.y > v3.screen_pos.y)
+			std::swap(v1, v3);
+		if (v2.screen_pos.y > v3.screen_pos.y)
+			std::swap(v2, v3);
 
-		normal.m_array[0] *= onePerW;
-		normal.m_array[1] *= onePerW;
-		normal.m_array[2] *= onePerW;
-*/
+		VertexData left, right;
+		int top_y = round(v3.screen_pos.y);
+		int mid_y = round(v2.screen_pos.y);
+		int bottom_y = round(v1.screen_pos.y);
 
-// 		t1.init();
-// 		t2.init();
-// 		t3.init();
-// 
-// 		//对顶点进行y坐标排序
-// 		Vertex temp;
-// 		if (t1.position[1] > t2.position[1]) {
-// 			temp = t2;
-// 			t2 = t1;
-// 			t1 = temp;
-// 		}
-// 		if (t2.position[1] > t3.position[1]) {
-// 			temp = t3;
-// 			t3 = t2;
-// 			t2 = temp;
-// 		}
-// 		if (t1.position[1] > t2.position[1]) {
-// 			temp = t2;
-// 			t2 = t1;
-// 			t1 = temp;
-// 		}
-// 
-// 		float dp12, dp13;//反向斜率
-// 		if (t2.position[1] - t1.position[1] > 0)
-// 			dp12 = (t2.position[0] - t1.position[0]) / (t2.position[1] - t1.position[1]);
-// 		else
-// 			dp12 = 0;
-// 		if (t3.position[1] - t1.position[1] > 0)
-// 			dp13 = (t3.position[0] - t1.position[0]) / (t3.position[1] - t1.position[1]);
-// 		else
-// 			dp13 = 0;
-// 
-// 		Vertex vleft, vright;
-// 		float g1, g2;
-// 
-// 		for (int y = (int)(t1.position[1] + 0.5f); y < t3.position[1]; y++)
-// 		{
-// 			g1 = t1.position[1] == t3.position[1] ? 1 : (y - t1.position[1]) / (t3.position[1] - t1.position[1]);
-// 			vleft.interpolation(t1, t3, g1);
-// 			if (y < t2.position[1]) {
-// 				g2 = t1.position[1] == t2.position[1] ? 1 : (y - t1.position[1]) / (t2.position[1] - t1.position[1]);
-// 				vright.interpolation(t1, t2, g2);
-// 			}
-// 			else {
-// 				g2 = t2.position[1] == t3.position[1] ? 1 : (y - t2.position[1]) / (t3.position[1] - t2.position[1]);
-// 				vright.interpolation(t2, t3, g2);
-// 			}
-// 			vleft.position.m_array[1] = (float)y;
-// 			vright.position.m_array[1] = (float)y;
-// 
-// 			if (dp12 > dp13) //case1:p2在p13右侧
-// 				drawScanLine(vleft, vright);
-// 			else             //case2:p2在p13左侧
-// 				drawScanLine(vright, vleft);
-// 		}
+		//bottom part
+		if (mid_y > bottom_y)
+		{
+			for (int y = bottom_y; y < mid_y; y++)
+			{
+				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
+				right.interp(v1, v2, (y - v1.screen_pos.y) / (v2.screen_pos.y - v1.screen_pos.y));
+				left.screen_pos.y = y;
+				right.screen_pos.y = y;
+
+				if (v3.screen_pos.x < v2.screen_pos.x) //2在p13右侧
+					drawScanLine(left, right);
+				else  //p2在p13左侧
+					drawScanLine(right, left);
+			}
+		}
+
+		//top part
+		if (top_y > mid_y)
+		{
+			for (int y = mid_y; y < top_y; y++)
+			{
+				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
+				right.interp(v2, v3, (y - v2.screen_pos.y) / (v3.screen_pos.y - v2.screen_pos.y));
+				left.screen_pos.y = y;
+				right.screen_pos.y = y;
+
+				if (v1.screen_pos.x < v2.screen_pos.x) //2在p13右侧
+					drawScanLine(left, right);
+				else  //p2在p13左侧
+					drawScanLine(right, left);
+			}
+		}
+	}
+}
+
+void Renderer::drawScanLine(VertexData& v1, VertexData& v2)
+{
+	int y = v1.screen_pos.y;
+	float x1 = v1.screen_pos.x, x2 = v2.screen_pos.x;
+
+	for (int x = round(x1); x < x2; x++) 
+	{
+		float depth = x1 == x2 ? 1.0f : Interp(v1.position.w, v2.position.w, (x - x1) / (x2 - x1));
+		//w = 1.0f / onePerW;
+		if (y < 0 || y >= widget_height || x < 0 || x >= widget_width)
+			continue;
+
+		if (zbuffer[y * widget_width + x] < depth)
+		{
+// 			u = (float)interp(v1.texcoord.x, v2.texcoord.x, g) * w;
+// 			v = (float)interp(v1.texcoord.y, v2.texcoord.y, g) * w;
+			drawPixel(x, y, 0x00ff0000); //readTexture(u, v)
+
+			//update zbuffer
+			zbuffer[y * widget_width + x] = depth;
+		}
 	}
 }
