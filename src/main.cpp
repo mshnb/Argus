@@ -32,6 +32,7 @@ int main(int argc, char** argv)
 	//init renderer
 	renderer = new Renderer(widget_width, widget_height);
 	renderer->bindFrameBuffer(widget->widget_fbuffer);
+	//renderer->isScanlineZbufferAlgo = true;
 
 	//load model
 	renderer->loadCude();
@@ -54,6 +55,7 @@ int main(int argc, char** argv)
 		renderer->clearDepthBuffer();
 		renderer->clearFrameBuffer();
 		renderer->draw();
+		//renderer->drawByScanLine();
 		clock_t end = clock();
 
 		int dur = end - start;

@@ -16,7 +16,6 @@
 #endif
 
 #define Clamp(x, a, b) (x < b ? (x > a ? x : a) : b)
-#define Round(X) ((X < 0) ? 0 : ((X > 1) ? 1 : X))
 #define Interp(x1, x2, t) (x1 + (x2 - x1) * t)
 
 #define PRINT(print_type, ...) printf("[%c] line %d in function %s: ", print_type, __LINE__, FN_NAME);printf(__VA_ARGS__);printf("\n")
