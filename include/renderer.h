@@ -43,6 +43,7 @@ private:
 	int widget_height;
 	int buffer_length;
 
+	int current_model = -1;
 	bool isMvpDirty = false;
 	float* zbuffer = NULL;
 	Color* framebuffer = NULL;
@@ -67,7 +68,8 @@ public:
 	enum RenderType
 	{
 		Wireframe,
-		Polygon,
+		Texture,
+		Texcoords,
 		Count
 	};
 	int rType = RenderType::Wireframe;

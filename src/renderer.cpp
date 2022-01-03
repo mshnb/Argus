@@ -109,6 +109,8 @@ void Renderer::loadCude()
 
 	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{4, 3, 3}, Vertex{7, 3, 2} });
 	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{0, 3, 1}, Vertex{4, 3, 3} });
+
+	cube.loadTexture("../resource/frog.jpg");
 }
 
 void Renderer::draw()
@@ -119,6 +121,7 @@ void Renderer::draw()
 	static VertexData vd[3];
 	for (int i = 0; i < vModels.size(); i++)
 	{
+		current_model = i;
 		Model& model = vModels[i];
 		for(int j = 0; j < model.vTriangles.size(); j++)
 		{
@@ -141,6 +144,8 @@ void Renderer::draw()
 			drawTriangle(vd[0], vd[1], vd[2]);
 		}
 	}
+
+	current_model = -1;
 }
 
 inline void Renderer::drawPixel(int x, int y, Color color)
@@ -311,9 +316,9 @@ void Renderer::drawScanLine(VertexData& v1, VertexData& v2)
 	int y = v1.screen_pos.y;
 	float x1 = v1.screen_pos.x, x2 = v2.screen_pos.x;
 
-	for (int x = round(x1); x < x2; x++) 
+	for (int x = floor(x1) + 1; x <= x2; x++) 
 	{
-		float g = x1 == x2 ? 1.0f : (x - x1) / (x2 - x1);
+		float g = (x2 - x1 < 1e-4) ? 1.0f : (x - x1) / (x2 - x1);
 		float depth = Interp(v1.position.w, v2.position.w, g);
 		if (y < 0 || y >= widget_height || x < 0 || x >= widget_width)
 			continue;
@@ -323,9 +328,16 @@ void Renderer::drawScanLine(VertexData& v1, VertexData& v2)
 			float u = (float)Interp(v1.texcoord.x, v2.texcoord.x, g);
 			float v = (float)Interp(v1.texcoord.y, v2.texcoord.y, g);
 
-			//0x00ff0000
-			Color visual = ((int)(255 * u) << 8) + (int)(255 * v);
-			drawPixel(x, y, visual); //readTexture(u, v)
+			if (rType == RenderType::Texcoords)
+			{
+				Color visual = ((int)(255 * u) << 8) + (int)(255 * v);
+				drawPixel(x, y, visual);
+			}
+			else if (rType == RenderType::Texture)
+			{
+				Color pixel_color = vModels[current_model].readAlbedo(u, v);
+				drawPixel(x, y, pixel_color);
+			}
 
 			//update zbuffer
 			zbuffer[y * widget_width + x] = depth;

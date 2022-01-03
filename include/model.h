@@ -4,10 +4,13 @@
 
 struct Texture 
 {
+	std::string sName;
 	unsigned char* data;
 	int channels;
 	int texType;
 	int width, height;
+
+	Color read(float u, float v);
 };
 
 struct Vertex
@@ -28,7 +31,10 @@ public:
 
 	Model();
 	Model(std::string& name);
+	~Model();
 
+	void loadTexture(std::string path);
+	Color readAlbedo(float u, float v);
 //private:
 	Texture* albedo = NULL;
 	//Texture* normal = NULL;
