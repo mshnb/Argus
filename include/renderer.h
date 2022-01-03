@@ -60,7 +60,7 @@ private:
 	void drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3);
 	void Renderer::drawScanLine(VertexData& v1, VertexData& v2);
 
-	void pos2Screen(VertexData& v);
+	void calScreenPos(VertexData& v);
 	int clip(vec4& clip_pos);
 
 public:

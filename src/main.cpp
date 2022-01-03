@@ -117,7 +117,10 @@ void keyboard_input(float deltaTime)
 
 	//TODO
 	if (keys[VK_SPACE])
+	{
 		renderer->rType = (renderer->rType + 1) % Renderer::RenderType::Count;
+		keys[VK_SPACE] = 0;
+	}
 }
 
 void mouse_input()

@@ -14,15 +14,22 @@ static LRESULT CALLBACK widget_events(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	case WM_KEYDOWN: widget->widget_keys[wParam & 511] = 1; break;
 	case WM_KEYUP: widget->widget_keys[wParam & 511] = 0; break;
 	case WM_LBUTTONDOWN:
-// 		get_mouse_pos(temp);
-// 		widget->mouse_info.pos.x = temp.x;
-// 		widget->mouse_info.pos.y = temp.y;
 		widget->mouse_info.left_pressed = true;
 		break;
 	case WM_LBUTTONUP:
-
 		widget->mouse_info.left_pressed = false;
 		break;
+
+	case WM_RBUTTONDOWN:
+		POINT temp;
+		get_mouse_pos(temp);
+		printf("test.mouse pos [%d, %d]\n", temp.x, temp.y);
+		widget->mouse_info.left_pressed = true;
+		break;
+	case WM_RBUTTONUP:
+		widget->mouse_info.left_pressed = false;
+		break;
+
 	default:
 		return DefWindowProc(hWnd, msg, wParam, lParam);
 	}

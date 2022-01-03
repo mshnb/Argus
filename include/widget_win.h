@@ -8,6 +8,7 @@ struct Mouse
 {
 	vec2 pos;
 	bool left_pressed = false;
+	bool right_pressed = false;
 	float wheel_delta = 0.0f;
 };
 

@@ -86,29 +86,29 @@ void Renderer::loadCude()
 	{
 		 0.0f, 0.0f,
 		 1.0f, 0.0f,
-		 1.0f, 1.0f,
-		 0.0f, 1.0f
+		 0.0f, 1.0f,
+		 1.0f, 1.0f
 	};
 	cube.vTexcoords.resize(static_cast<size_t>(4));
 	memcpy(&*cube.vTexcoords.begin(), texcoords, 4 * 2 * sizeof(float));
 
-	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{5, 5, 1}, Vertex{4, 5, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{1, 5, 2}, Vertex{5, 5, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{5, 5, 3}, Vertex{4, 5, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{1, 5, 1}, Vertex{5, 5, 3} });
 
-	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{7, 2, 1}, Vertex{6, 2, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{3, 2, 2}, Vertex{7, 2, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{7, 2, 3}, Vertex{6, 2, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{3, 2, 1}, Vertex{7, 2, 3} });
 
-	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{6, 1, 1}, Vertex{7, 1, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{5, 1, 2}, Vertex{6, 1, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{6, 1, 3}, Vertex{7, 1, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{5, 1, 1}, Vertex{6, 1, 3} });
 
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{1, 4, 1}, Vertex{0, 4, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{2, 4, 2}, Vertex{1, 4, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{1, 4, 3}, Vertex{0, 4, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{2, 4, 1}, Vertex{1, 4, 3} });
 
-	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{6, 0, 1}, Vertex{5, 0, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{2, 0, 2}, Vertex{6, 0, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{6, 0, 3}, Vertex{5, 0, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{2, 0, 1}, Vertex{6, 0, 3} });
 
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{4, 3, 1}, Vertex{7, 3, 3} });
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{0, 3, 2}, Vertex{4, 3, 1} });
+	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{4, 3, 3}, Vertex{7, 3, 2} });
+	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{0, 3, 1}, Vertex{4, 3, 3} });
 }
 
 void Renderer::draw()
@@ -187,7 +187,7 @@ void Renderer::drawLine(vec2& p1, vec2& p2, Color color)
 }
 
 //TODO
-void Renderer::pos2Screen(VertexData& v)
+void Renderer::calScreenPos(VertexData& v)
 {
 	float w = v.position.w;
 	if (abs(w) < 1e-4) return;
@@ -227,7 +227,6 @@ void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 		if (ans > 0) return;
 	}
 
-	//TODO
 	//world pos to clip pos
 	glm::mat4 pv = mProjection * mView;
 	v1.position = pv * v1.position;
@@ -238,9 +237,9 @@ void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 	if (clip(v1.position) || clip(v2.position) || clip(v3.position)) return;
 
 	//clip pos to screen pos
-	pos2Screen(v1);
-	pos2Screen(v2);
-	pos2Screen(v3);
+	calScreenPos(v1);
+	calScreenPos(v2);
+	calScreenPos(v3);
 
 	//»æÖÆÏß¿ò
 	if (rType == RenderType::Wireframe) 
@@ -267,23 +266,23 @@ void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 			std::swap(v2, v3);
 
 		VertexData left, right;
-		int top_y = round(v3.screen_pos.y);
-		int mid_y = round(v2.screen_pos.y);
-		int bottom_y = round(v1.screen_pos.y);
+		int top_y = floor(v3.screen_pos.y);
+		int mid_y = floor(v2.screen_pos.y);
+		int bottom_y = floor(v1.screen_pos.y);
 
 		//bottom part
 		if (mid_y > bottom_y)
 		{
-			for (int y = bottom_y; y < mid_y; y++)
+			for (int y = bottom_y + 1; y <= mid_y; y++)
 			{
 				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
 				right.interp(v1, v2, (y - v1.screen_pos.y) / (v2.screen_pos.y - v1.screen_pos.y));
 				left.screen_pos.y = y;
 				right.screen_pos.y = y;
 
-				if (v3.screen_pos.x < v2.screen_pos.x) //2ÔÚp13ÓÒ²à
+				if (left.screen_pos.x < right.screen_pos.x)
 					drawScanLine(left, right);
-				else  //p2ÔÚp13×ó²à
+				else
 					drawScanLine(right, left);
 			}
 		}
@@ -291,16 +290,16 @@ void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
 		//top part
 		if (top_y > mid_y)
 		{
-			for (int y = mid_y; y < top_y; y++)
+			for (int y = mid_y + 1; y <= top_y; y++)
 			{
 				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
 				right.interp(v2, v3, (y - v2.screen_pos.y) / (v3.screen_pos.y - v2.screen_pos.y));
 				left.screen_pos.y = y;
 				right.screen_pos.y = y;
 
-				if (v1.screen_pos.x < v2.screen_pos.x) //2ÔÚp13ÓÒ²à
+				if (left.screen_pos.x < right.screen_pos.x)
 					drawScanLine(left, right);
-				else  //p2ÔÚp13×ó²à
+				else
 					drawScanLine(right, left);
 			}
 		}
@@ -314,16 +313,19 @@ void Renderer::drawScanLine(VertexData& v1, VertexData& v2)
 
 	for (int x = round(x1); x < x2; x++) 
 	{
-		float depth = x1 == x2 ? 1.0f : Interp(v1.position.w, v2.position.w, (x - x1) / (x2 - x1));
-		//w = 1.0f / onePerW;
+		float g = x1 == x2 ? 1.0f : (x - x1) / (x2 - x1);
+		float depth = Interp(v1.position.w, v2.position.w, g);
 		if (y < 0 || y >= widget_height || x < 0 || x >= widget_width)
 			continue;
 
 		if (zbuffer[y * widget_width + x] < depth)
 		{
-// 			u = (float)interp(v1.texcoord.x, v2.texcoord.x, g) * w;
-// 			v = (float)interp(v1.texcoord.y, v2.texcoord.y, g) * w;
-			drawPixel(x, y, 0x00ff0000); //readTexture(u, v)
+			float u = (float)Interp(v1.texcoord.x, v2.texcoord.x, g);
+			float v = (float)Interp(v1.texcoord.y, v2.texcoord.y, g);
+
+			//0x00ff0000
+			Color visual = ((int)(255 * u) << 8) + (int)(255 * v);
+			drawPixel(x, y, visual); //readTexture(u, v)
 
 			//update zbuffer
 			zbuffer[y * widget_width + x] = depth;
