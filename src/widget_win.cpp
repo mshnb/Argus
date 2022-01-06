@@ -1,6 +1,8 @@
 #include <time.h>
-
 #include "widget_win.h"
+
+#include "imm.h"
+#pragma comment(lib, "imm32.lib")
 
 Widget* widget = NULL;
 
@@ -9,11 +11,17 @@ static LRESULT CALLBACK widget_events(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 {
 	switch (msg) 
 	{
-	case WM_CLOSE: widget->widget_exit = 1;
+	case WM_CLOSE: 
+		widget->widget_exit = 1;
 		break;
-	case WM_KEYDOWN: widget->widget_keys[wParam & 511] = 1;
+	case WM_KEYDOWN: 
+		if(wParam == VK_PROCESSKEY)
+			wParam = ImmGetVirtualKey(hWnd);
+
+		widget->widget_keys[wParam & 511] = 1;
 		break;
-	case WM_KEYUP: widget->widget_keys[wParam & 511] = 0;
+	case WM_KEYUP: 
+		widget->widget_keys[wParam & 511] = 0;
 		break;
 	case WM_LBUTTONDOWN:
 		widget->mouse_info.left_pressed = true;

@@ -17,7 +17,7 @@ Renderer::Renderer(int w, int h)
 	mProjection = glm::mat4(1.0f);
 
 	camera = new Camera();
-	camera->Position = glm::vec3(-3.0f, 0.0f, 0.0f);
+	camera->Position = glm::vec3(0.0f, 0.0f, 3.0f);
 	mView = camera->GetViewMatrix();
 	mProjection = glm::perspective(glm::radians(camera->Zoom), (float)w / (float)h, camera->tNear, camera->tFar);
 
@@ -179,45 +179,23 @@ void Renderer::loadCude()
 	cube.vPositions.resize(static_cast<size_t>(8));
 	memcpy(&cube.vPositions[0], positions, 8 * 3 * sizeof(float));
 
-	float normals[] =
-	{
-		 1.0f, 0.0f, 0.0f,
-		 0.0f, 1.0f, 0.0f,
-		 0.0f, 0.0f, 1.0f,
-		-1.0f, 0.0f, 0.0f,
-		 0.0f,-1.0f, 0.0f,
-		 0.0f, 0.0f,-1.0f
-	};
-	cube.vNormals.resize(static_cast<size_t>(6));
-	memcpy(&cube.vNormals[0], normals, 6 * 3 * sizeof(float));
+	cube.vTriangles.push_back(Triangle{0, 5, 4});
+	cube.vTriangles.push_back(Triangle{0, 1, 5});
 
-	float texcoords[] =
-	{
-		 0.0f, 0.0f,
-		 1.0f, 0.0f,
-		 0.0f, 1.0f,
-		 1.0f, 1.0f
-	};
-	cube.vTexcoords.resize(static_cast<size_t>(4));
-	memcpy(&cube.vTexcoords[0], texcoords, 4 * 2 * sizeof(float));
+	cube.vTriangles.push_back(Triangle{2, 7, 6});
+	cube.vTriangles.push_back(Triangle{2, 3, 7});
 
-	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{5, 5, 3}, Vertex{4, 5, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{0, 5, 0}, Vertex{1, 5, 1}, Vertex{5, 5, 3} });
+	cube.vTriangles.push_back(Triangle{4, 6, 7});
+	cube.vTriangles.push_back(Triangle{4, 5, 6});
 
-	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{7, 2, 3}, Vertex{6, 2, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{2, 2, 0}, Vertex{3, 2, 1}, Vertex{7, 2, 3} });
+	cube.vTriangles.push_back(Triangle{3, 1, 0});
+	cube.vTriangles.push_back(Triangle{3, 2, 1});
 
-	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{6, 1, 3}, Vertex{7, 1, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{4, 1, 0}, Vertex{5, 1, 1}, Vertex{6, 1, 3} });
+	cube.vTriangles.push_back(Triangle{1, 6, 5});
+	cube.vTriangles.push_back(Triangle{1, 2, 6});
 
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{1, 4, 3}, Vertex{0, 4, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 4, 0}, Vertex{2, 4, 1}, Vertex{1, 4, 3} });
-
-	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{6, 0, 3}, Vertex{5, 0, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{1, 0, 0}, Vertex{2, 0, 1}, Vertex{6, 0, 3} });
-
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{4, 3, 3}, Vertex{7, 3, 2} });
-	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{0, 3, 1}, Vertex{4, 3, 3} });
+	cube.vTriangles.push_back(Triangle{3, 4, 7});
+	cube.vTriangles.push_back(Triangle{3, 0, 4});
 }
 
 void Renderer::loadModel(std::string path)
@@ -247,7 +225,7 @@ void Renderer::loadModel(std::string path)
 		{
 			aiFace& face = ai_mesh->mFaces[j];
 			assert(face.mNumIndices == 3);
-			model.vTriangles.push_back(Triangle{ Vertex{face.mIndices[2], 0, 0}, Vertex{face.mIndices[1], 0, 0}, Vertex{face.mIndices[0], 0, 0} });
+			model.vTriangles.push_back(Triangle{ face.mIndices[2], face.mIndices[1], face.mIndices[0] });
 			
 			//cal bounding box
 			for (int k = 0; k < 3; k++)
@@ -310,21 +288,10 @@ void Renderer::draw()
 			Triangle& t = model.vTriangles[j];
 			for (int k = 0; k < 3; k++)
 			{
-				Vertex& v = t.vList[k];
-
-				vd[k].position.x = model.vPositions[v.iPostion].x;
-				vd[k].position.y = model.vPositions[v.iPostion].y;
-				vd[k].position.z = model.vPositions[v.iPostion].z;
+				vd[k].position.x = model.vPositions[t.iPostion[k]].x;
+				vd[k].position.y = model.vPositions[t.iPostion[k]].y;
+				vd[k].position.z = model.vPositions[t.iPostion[k]].z;
 				vd[k].position.w = 1.0f;
-
-// 				if (model.hasNormals())
-// 				{
-// 					vd[k].normal = model.vNormals[v.iNormal];
-// 					vd[k].normal.w = 0.0f;
-// 				}
-// 
-// 				if(model.hasTextureCoords())
-// 					vd[k].texcoord = model.vTexcoords[v.iTexcoord];
 			}
 
 			// local pos to screen pos
@@ -385,7 +352,7 @@ void Renderer::draw()
 
 				EdgeNode* edge = getEdgeNode();
 				edge->x = v1->screen_pos.x;
-				edge->dx = (v2->screen_pos.x - v1->screen_pos.x) / (floor(v2->screen_pos.y) - floor(v1->screen_pos.y));
+				edge->dx = (v2->screen_pos.x - v1->screen_pos.x) / (v2->screen_pos.y - v1->screen_pos.y);
 				edge->other_x = v2->screen_pos.x;
 				edge->cover_y = cover_y + 1;
 				edge->polygon_id = polygon_id;
@@ -413,7 +380,8 @@ void Renderer::draw()
 				polygon->polygon_id = polygon_id++;
 
 				//calculate normal
-				face_normal = glm::normalize(face_normal);
+				glm::vec3 u(vd[2].position - vd[0].position), v(vd[1].position - vd[0].position);
+				face_normal = glm::normalize(glm::cross(u, v));
 				polygon->a = face_normal.x;
 				polygon->b = face_normal.y;
 				polygon->c = face_normal.z;
@@ -456,7 +424,7 @@ void Renderer::draw()
 #ifdef _DEBUG
 					if(!e2)
 					{
-						WARN("error occur when generating active edge, can't find 2 edge.");
+						WARN("error occur when generating active edge, can't find 2 edge in y=%d.", y);
 						abort();
 					}
 #endif
@@ -486,7 +454,7 @@ void Renderer::draw()
 			active_edge->cover_y_right = e2->cover_y;
 
 			active_edge->depth_left = polygon->depth;
-			if (abs(polygon->c) < 1e-3)//TODO reduce artifacts
+			if (abs(polygon->c) < 1e-1)//TODO reduce artifacts
 			{
 				active_edge->depth_dx = 0.0f;
 				active_edge->depth_dy = 0.0f;
@@ -517,7 +485,6 @@ void Renderer::draw()
 				{
 					if (x >=0 && (scanline[x] == 0 || scanline[x] > depth))
 					{
-						//TODO
 						Color visual = 0x00000000;
 						if (rType == RenderType::Depth)
 						{
@@ -546,12 +513,25 @@ void Renderer::draw()
 			active_edge->cover_y_left -= 1;
 			active_edge->cover_y_right -= 1;
 
-			bool isChangeEdge = false;
+			// check this final 2 pixel because some step maybe very large causing depth's discontinuity
+			float real_x_step = active_edge->dx_left;
+			if (active_edge->cover_y_left < 2)
+			{
+				float next_x_left = active_edge->x_left + active_edge->dx_left;
+				if ((active_edge->dx_left < 0 && next_x_left < active_edge->end_x_left)
+					|| (active_edge->dx_left > 0 && next_x_left > active_edge->end_x_left))
+					real_x_step = active_edge->end_x_left - active_edge->x_left;
+			}
+
+			// update depth for next scan line
+			active_edge->depth_left += real_x_step * active_edge->depth_dx + active_edge->depth_dy;
+
+			//change edge or remove active edges pair
 			if (active_edge->cover_y_left == 0 || active_edge->cover_y_right == 0)
 			{
 				if (active_edge->cover_y_left == 0 && active_edge->cover_y_right == 0)
 				{
-					// remove this active edge
+					// remove this active edges pair
 					ActiveEdgeNode* next = active_edge->next;
 					releaseActiveEdgeNode(active_edge) ;
 					if (!prev_edge)
@@ -573,10 +553,11 @@ void Renderer::draw()
 #ifdef _DEBUG
 				if (!edge)
 				{
-					WARN("error occur when changeto another active edge, can't find 3rd edge.");
+					WARN("error occur when change to another active edge, can't find that edge in y=%d.", y);
 					abort();
 				}
 #endif
+				// set new steps and remain lines num
 				if (active_edge->cover_y_left == 0)
 				{
 					active_edge->x_left = edge->x;
@@ -593,10 +574,11 @@ void Renderer::draw()
 				}
 			}
 
+			//update point's x for left and right edges
 			active_edge->x_left += active_edge->dx_left;
 			active_edge->x_right += active_edge->dx_right;
 
-			// last step maybe too large
+			// some step maybe too large
 			if (active_edge->cover_y_left == 1 && ((active_edge->dx_left < 0 && active_edge->x_left < active_edge->end_x_left)
 				|| (active_edge->dx_left > 0 && active_edge->x_left > active_edge->end_x_left)))
 				active_edge->x_left = active_edge->end_x_left;
@@ -604,8 +586,6 @@ void Renderer::draw()
 			if (active_edge->cover_y_right == 1 && ((active_edge->dx_right < 0 && active_edge->x_right < active_edge->end_x_right)
 				|| (active_edge->dx_right > 0 && active_edge->x_right > active_edge->end_x_right)))
 				active_edge->x_right = active_edge->end_x_right;
-
-			active_edge->depth_left += active_edge->dx_left * active_edge->depth_dx + active_edge->depth_dy;
 
 			prev_edge = active_edge;
 			active_edge = active_edge->next;

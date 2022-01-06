@@ -2,14 +2,9 @@
 
 #include "tools.h"
 
-struct Vertex
-{
-	unsigned int iPostion, iNormal, iTexcoord;
-};
-
 struct Triangle
 {
-	Vertex vList[3];
+	unsigned int iPostion[3];
 };
 
 class Model 
@@ -23,7 +18,5 @@ public:
 
 	int nVertex;
 	std::vector<vec3> vPositions;
-	std::vector<vec3> vNormals;
-	std::vector<vec2> vTexcoords;
 	std::vector<Triangle> vTriangles;
 };

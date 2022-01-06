@@ -11,8 +11,8 @@ int parse_arg(int argc, char** argv);
 void keyboard_input(float deltaTime = 0.0f);
 void mouse_input();
 
-unsigned int widget_width = 512;
-unsigned int widget_height = 512;
+unsigned int widget_width = 1024;
+unsigned int widget_height = 1024;
 
 Renderer* renderer = NULL;
 
@@ -35,7 +35,7 @@ int main(int argc, char** argv)
 
 	//load model
 	//renderer->loadCude();
-	renderer->loadModel("../resource/bunny.obj");
+	renderer->loadModel("../resource/bunny_40k.obj");
 
 	//time
 	float lastFrame = 0.0f;

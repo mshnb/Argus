@@ -131,8 +131,8 @@ private:
 public:
 	enum RenderType
 	{
-		Depth,
 		Normal,
+		Depth,
 		Count
 	};
 
@@ -142,7 +142,7 @@ public:
 
 	ActiveEdgeNode* activeEdgeList = NULL;
 
-	int rType = RenderType::Depth;
+	int rType = RenderType::Normal;
 	Camera* camera = NULL;
 	std::vector<Model> vModels;
 };
