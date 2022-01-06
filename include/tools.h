@@ -122,6 +122,13 @@ public:
 		this->z = 0.0f;
 	}
 
+	vec3(float v)
+	{
+		this->x = v;
+		this->y = v;
+		this->z = v;
+	}
+
 	vec3(glm::vec4 input)
 	{
 		this->x = input.x;

@@ -7,12 +7,14 @@ Widget* widget = NULL;
 //处理窗体过程事件
 static LRESULT CALLBACK widget_events(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 {
-//	static POINT temp;
 	switch (msg) 
 	{
-	case WM_CLOSE: widget->widget_exit = 1; break;
-	case WM_KEYDOWN: widget->widget_keys[wParam & 511] = 1; break;
-	case WM_KEYUP: widget->widget_keys[wParam & 511] = 0; break;
+	case WM_CLOSE: widget->widget_exit = 1;
+		break;
+	case WM_KEYDOWN: widget->widget_keys[wParam & 511] = 1;
+		break;
+	case WM_KEYUP: widget->widget_keys[wParam & 511] = 0;
+		break;
 	case WM_LBUTTONDOWN:
 		widget->mouse_info.left_pressed = true;
 		break;
@@ -37,7 +39,6 @@ static LRESULT CALLBACK widget_events(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 	return 0;
 }
 
-//窗体消息循环过程
 void widget_dispatch() 
 {
 	MSG msg;
@@ -49,7 +50,6 @@ void widget_dispatch()
 	}
 }
 
-//关闭窗体
 void widget_destroy()
 {
 	if (widget->widget_dc) {
@@ -70,7 +70,6 @@ void widget_destroy()
 	}
 }
 
-//初始化窗体
 int widget_init(int width, int height, const TCHAR* title) 
 {
 	if (widget)
@@ -81,7 +80,7 @@ int widget_init(int width, int height, const TCHAR* title)
 
 	widget = new Widget();
 
-	//定义窗体
+	//define window
 	WNDCLASSEX wc = WNDCLASSEX();
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.lpszClassName = title;
@@ -91,32 +90,31 @@ int widget_init(int width, int height, const TCHAR* title)
 	wc.hInstance = GetModuleHandle(NULL);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 
-	//注册窗体
+	//register window
 	if (!RegisterClassEx(&wc)) return -1;
 
-	//创建窗体
+	//create window
 	widget->widget_handle = CreateWindow(title, title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, 0, 0, 0, 0, NULL, NULL, wc.hInstance, NULL);
 	if (widget->widget_handle == NULL) return -2;
 
-	//绘图对象初始化
+	//init render target
 	HDC temp_hdc = GetDC(widget->widget_handle);
-	widget->widget_dc = CreateCompatibleDC(temp_hdc);//获取与当前设备兼容的上下文环境
+	widget->widget_dc = CreateCompatibleDC(temp_hdc);
 	ReleaseDC(widget->widget_handle, temp_hdc);
-	BITMAPINFO bi = { { sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB, (DWORD)(width * height * sizeof(Color)), 0, 0, 0, 0 } };//定义设备无关位图
+	BITMAPINFO bi = { { sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB, (DWORD)(width * height * sizeof(Color)), 0, 0, 0, 0 } };
 	void* ptr;
-	widget->widget_hb = CreateDIBSection(widget->widget_dc, &bi, DIB_RGB_COLORS, &ptr, 0, 0);//创建设备无关位图
+	widget->widget_hb = CreateDIBSection(widget->widget_dc, &bi, DIB_RGB_COLORS, &ptr, 0, 0);
 	if (widget->widget_hb == NULL) return -3;
 
-	widget->widget_ob = (HBITMAP)SelectObject(widget->widget_dc, widget->widget_hb);//从设备上下文中替换HBITMAP类型的对象
+	widget->widget_ob = (HBITMAP)SelectObject(widget->widget_dc, widget->widget_hb);
 	widget->widget_fbuffer = (Color*)ptr;
 	widget->widget_w = width;
 	widget->widget_h = height;
 
-	//调整大小
 	RECT rect = { 0, 0, width, height };
 	AdjustWindowRect(&rect, GetWindowLong(widget->widget_handle, GWL_STYLE), 0);
 
-	//调整位置
+	//set pos
 	int wx, wy, sx, sy;
 	wx = rect.right - rect.left;
 	wy = rect.bottom - rect.top;
@@ -125,25 +123,23 @@ int widget_init(int width, int height, const TCHAR* title)
 	if (sy < 0) sy = 0;
 	SetWindowPos(widget->widget_handle, NULL, sx, sy, wx, wy, (SWP_NOCOPYBITS | SWP_NOZORDER | SWP_SHOWWINDOW));
 
-	//显示窗体
+	//show window
 	SetForegroundWindow(widget->widget_handle);
 	ShowWindow(widget->widget_handle, SW_NORMAL);
 	widget_dispatch();
 
 	memset(widget->widget_keys, 0, sizeof(int) * 512);
-	//memset(widget->widget_fbuffer, 0xffffff, sizeof(Color) * width * height);
 	widget->widget_exit = 0;
 
 	return 0;
 }
 
-//窗体画面刷新
+//refresh window
 void widget_tick() 
 {
 	HDC temp_hdc = GetDC(widget->widget_handle);
 	BitBlt(temp_hdc, 0, 0, widget->widget_w, widget->widget_h, widget->widget_dc, 0, 0, SRCCOPY);
 	ReleaseDC(widget->widget_handle, temp_hdc);
-	//widget_dispatch();
 
 	//clear offset in y axis
 	widget->current_text_offset = 0;
@@ -167,10 +163,9 @@ void widget_print(std::string content)
 	delete[] wbuf;
 }
 
-//计算fps
 int cal_fps(long dur) 
 {
-	//平均采样法
+	//average sample
 	static double avgDur = 0.0;
 	static double alpha = 0.01;
 

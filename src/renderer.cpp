@@ -1,3 +1,7 @@
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 #include "renderer.h"
 #include "camera.h"
 #include "model.h"
@@ -7,32 +11,137 @@ Renderer::Renderer(int w, int h)
 	widget_width = w;
 	widget_height = h;
 	buffer_length = w * h;
-	zbuffer = new float[buffer_length];
 
 	mModel = glm::mat4x4(1.0f);
 	mView = glm::mat4x4(1.0f);
 	mProjection = glm::mat4(1.0f);
 
 	camera = new Camera();
-	clearDepthBuffer();
-
-	//TODO
 	camera->Position = glm::vec3(-3.0f, 0.0f, 0.0f);
 	mView = camera->GetViewMatrix();
-	mProjection = glm::perspective(glm::radians(camera->Zoom), (float)w / (float)h, 0.1f, 100.0f);
+	mProjection = glm::perspective(glm::radians(camera->Zoom), (float)w / (float)h, camera->tNear, camera->tFar);
 
 	polygonTable.resize(widget_height);
 	edgeTable.resize(widget_height);
 
 	memset(&polygonTable[0], 0, widget_height * sizeof(void*));
 	memset(&edgeTable[0], 0, widget_height * sizeof(void*));
+
+	scanline = new float[widget_width];
+	doubleWidthInv = 2.0f / widget_width;
+	doubleHeightInv = 2.0f / widget_height;
+
+	bounding_min = vec3(FLT_MAX);
+	bounding_max = vec3(-FLT_MAX);
+
+	isMvpDirty = true;
 }
 
 Renderer::~Renderer() 
 {
-	if (zbuffer)
-		delete[] zbuffer;
-	zbuffer = NULL;
+	if (scanline)
+		delete[] scanline;
+	scanline = NULL;
+
+	for (int i = 0; i < polygonTable.size(); i++)
+	{
+		auto p = polygonTable[i];
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+	}
+	polygonTable.clear();
+
+	for (int i = 0; i < edgeTable.size(); i++)
+	{
+		auto p = edgeTable[i];
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+	}
+	edgeTable.clear();
+
+	{
+		auto p = activeEdgeList;
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+		activeEdgeList = NULL;
+	}
+
+	if (camera)
+		delete camera;
+	camera = NULL;
+
+	//clear mem pool
+	{
+		auto p = polygonNodePool;
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+		polygonNodePool = NULL;
+	}
+
+	{
+		auto p = edgeNodePool;
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+		edgeNodePool = NULL;
+	}
+
+	{
+		auto p = activeEdgeNodePool;
+		while (p)
+		{
+			auto next = p->next;
+			delete p;
+			p = next;
+		}
+		activeEdgeNodePool = NULL;
+	}
+}
+
+void Renderer::resetCamera()
+{
+	isMvpDirty = true;
+	float radius = glm::length(bounding_max - bounding_min) * 0.5f;
+	glm::vec3 bounding_center = (bounding_max + bounding_min) * 0.5f;
+
+	camera->tNear = 0.1f * radius;
+	camera->tFar = 2.5f * radius;
+	camera->Position = bounding_center - 2.f * radius * camera->Front;
+	camera->camera_walk_speed = radius * 2.5f;
+	camera->camera_run_speed = camera->camera_walk_speed * 3.0f;
+
+	mProjection = glm::perspective(glm::radians(camera->Zoom), (float)widget_width / (float)widget_height, camera->tNear, camera->tFar);
+}
+
+void Renderer::moveCamera(int direction, float deltaTime)
+{
+	isMvpDirty = true;
+	camera->ProcessKeyboard(direction, deltaTime);
+}
+
+void Renderer::rotateCamera(int xoffset, int yoffset)
+{
+	isMvpDirty = true;
+	camera->ProcessMouseMovement(xoffset, yoffset);
 }
 
 void Renderer::bindFrameBuffer(Color* fb)
@@ -43,12 +152,6 @@ void Renderer::bindFrameBuffer(Color* fb)
 
 	framebuffer = fb;
 	clearFrameBuffer();
-}
-
-void Renderer::clearDepthBuffer()
-{
-	assert(zbuffer);
-	memset(zbuffer, 0.0f, sizeof(float) * buffer_length);
 }
 
 void Renderer::clearFrameBuffer()
@@ -115,23 +218,92 @@ void Renderer::loadCude()
 
 	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{4, 3, 3}, Vertex{7, 3, 2} });
 	cube.vTriangles.push_back(Triangle{ Vertex{3, 3, 0}, Vertex{0, 3, 1}, Vertex{4, 3, 3} });
-
-	cube.loadTexture("../resource/frog.jpg");
 }
 
-void Renderer::drawByScanLine()
+void Renderer::loadModel(std::string path)
 {
+	Assimp::Importer importer;
+	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate); // | aiProcess_FlipUVs
+	// check for errors
+	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) // if is Not Zero
+	{
+		WARN("Error occur in loading model:%s, error info:%s", path, importer.GetErrorString());
+		abort();
+	}
+
+	for (int i = 0; i < scene->mNumMeshes; i++)
+	{
+		aiMesh* ai_mesh = scene->mMeshes[i];
+		int numVertices = ai_mesh->mNumVertices;
+		vModels.emplace_back();
+		Model& model = vModels.back();
+
+		model.vPositions.resize(static_cast<size_t>(numVertices));
+		memcpy(&model.vPositions[0], ai_mesh->mVertices, numVertices * 3 * sizeof(float));
+
+		int numFaces = ai_mesh->mNumFaces;
+		model.vTriangles.reserve(numFaces);
+		for (int j = 0; j < numFaces; j++)
+		{
+			aiFace& face = ai_mesh->mFaces[j];
+			assert(face.mNumIndices == 3);
+			model.vTriangles.push_back(Triangle{ Vertex{face.mIndices[2], 0, 0}, Vertex{face.mIndices[1], 0, 0}, Vertex{face.mIndices[0], 0, 0} });
+			
+			//cal bounding box
+			for (int k = 0; k < 3; k++)
+			{
+				vec3& v = model.vPositions[face.mIndices[k]];
+				bounding_min.x = std::min(bounding_min.x, v.x);
+				bounding_min.y = std::min(bounding_min.y, v.y);
+				bounding_min.z = std::min(bounding_min.z, v.z);
+				bounding_max.x = std::max(bounding_max.x, v.x);
+				bounding_max.y = std::max(bounding_max.y, v.y);
+				bounding_max.z = std::max(bounding_max.z, v.z);
+			}
+		}
+	}
+
+	resetCamera();
+}
+
+void Renderer::draw()
+{
+	//temp data
 	static VertexData vd[3];
 
-	memset(&polygonTable[0], 0, widget_height * sizeof(void*));
-	memset(&edgeTable[0], 0, widget_height * sizeof(void*));
+	// clear y-bucket
+	for (int i = 0; i < polygonTable.size(); i++)
+	{
+		while (polygonTable[i])
+		{
+			PolygonNode* next = polygonTable[i]->next;
+			releasePolygonNode(polygonTable[i]);
+			polygonTable[i] = next;
+		}
+	}
+		
+	for (int i = 0; i < edgeTable.size(); i++)
+	{
+		while (edgeTable[i])
+		{
+			EdgeNode* next = edgeTable[i]->next;
+			releaseEdgeNode(edgeTable[i]);
+			edgeTable[i] = next;
+		}
+	}
 
-	mView = camera->GetViewMatrix();
-	pv = mProjection * mView;
+	// reduce computing
+	if (isMvpDirty)
+	{
+		mView = camera->GetViewMatrix();
+		pv = mProjection * mView;
+		isMvpDirty = false;
+	}
 
+	int polygon_id = 0;
+	glm::vec3 face_normal;
 	for (int i = 0; i < vModels.size(); i++)
 	{
-		current_model = i;
 		Model& model = vModels[i];
 		for (int j = 0; j < model.vTriangles.size(); j++)
 		{
@@ -145,10 +317,14 @@ void Renderer::drawByScanLine()
 				vd[k].position.z = model.vPositions[v.iPostion].z;
 				vd[k].position.w = 1.0f;
 
-				vd[k].normal = model.vNormals[v.iNormal];
-				vd[k].normal.w = 0.0f;
-
-				vd[k].texcoord = model.vTexcoords[v.iTexcoord];
+// 				if (model.hasNormals())
+// 				{
+// 					vd[k].normal = model.vNormals[v.iNormal];
+// 					vd[k].normal.w = 0.0f;
+// 				}
+// 
+// 				if(model.hasTextureCoords())
+// 					vd[k].texcoord = model.vTexcoords[v.iTexcoord];
 			}
 
 			// local pos to screen pos
@@ -162,12 +338,12 @@ void Renderer::drawByScanLine()
 				v2.position = mModel * v2.position;
 				v3.position = mModel * v3.position;
 
-				//背面消隐 正面看该三角形时 顶点顺序需满足 v1,v2,v3呈逆时针
-				if (rType != RenderType::Wireframe)
 				{
-					vec3 u(v2.position - v1.position), v(v3.position - v1.position);
-					glm::vec3 norl = glm::cross(u, v), view = camera->Position - v1.position.xyz();
-					float ans = glm::dot(norl, view);
+					//face culling
+					glm::vec3 u(v2.position - v1.position), v(v3.position - v1.position);
+					face_normal = glm::cross(u, v);
+					glm::vec3 view = camera->Position - v1.position.xyz();
+					float ans = glm::dot(face_normal, view);
 					if (ans > 0)
 						continue;
 				}
@@ -177,92 +353,86 @@ void Renderer::drawByScanLine()
 				v2.position = pv * v2.position;
 				v3.position = pv * v3.position;
 
-				//clip
-				// if (clip(v1.position) || clip(v2.position) || clip(v3.position)) return;
+				//simple clip
+				if (clip(v1.position) || clip(v2.position) || clip(v3.position)) continue;
 
-				//clip pos to screen pos
+				//ndc pos to screen pos
 				calScreenPos(v1);
 				calScreenPos(v2);
 				calScreenPos(v3);
 			}
 
-			float depth = 0.0f;
+			float depth = FLT_MAX;
 			float min_y = FLT_MAX;
 			float max_y = -FLT_MAX;
+
+			// min_y point's x
+			float min_y_x;
 
 			// create edge table
 			for (int k = 0; k < 3; k++)
 			{
-				VertexData& v1 = vd[k];
-				VertexData& v2 = vd[(k + 1) % 3];
+				VertexData* v1 = &vd[k];
+				VertexData* v2 = &vd[(k + 1) % 3];
 
 				//make v1.y < v2.y
-				if (v1.screen_pos.y > v2.screen_pos.y)
+				if (v1->screen_pos.y > v2->screen_pos.y)
 					std::swap(v1, v2);
 
-				int cover_y = round(v2.screen_pos.y) - round(v1.screen_pos.y);
-				if (cover_y == 0) // horizontal edge
+				int cover_y = floor(v2->screen_pos.y) - floor(v1->screen_pos.y);
+				if (cover_y == 0) // ignore horizontal edge
 					continue;
 
-				EdgeNode* edge = new EdgeNode();
-				edge->x = v1.screen_pos.x;
-				edge->dx = (v2.screen_pos.x - v1.screen_pos.x) / (v2.screen_pos.y - v1.screen_pos.y);
-				edge->dy = cover_y;
-				edge->model_id = current_model;
-				edge->polygon_id = j;
+				EdgeNode* edge = getEdgeNode();
+				edge->x = v1->screen_pos.x;
+				edge->dx = (v2->screen_pos.x - v1->screen_pos.x) / (floor(v2->screen_pos.y) - floor(v1->screen_pos.y));
+				edge->other_x = v2->screen_pos.x;
+				edge->cover_y = cover_y + 1;
+				edge->polygon_id = polygon_id;
 
 				//insert to edge table
-				int y_idx = round(v1.screen_pos.y);
-				if (edgeTable[y_idx])
-					edgeTable[y_idx]->next = edge;
-				else
-					edgeTable[y_idx] = edge;
+				int y_idx = floor(v1->screen_pos.y);
+				insertEdge(y_idx, edge);
 
-
-				if (min_y > v1.screen_pos.y)
+				// use floor to avoid nearly horizontal edge leading to use wrong edge's depth
+				if (floor(min_y) > y_idx || (floor(min_y) == y_idx && min_y_x > v1->screen_pos.x))
 				{
-					depth = v1.position.w;
-					min_y = v1.screen_pos.y;
+					depth = v1->position.z;
+					min_y = v1->screen_pos.y;
+					min_y_x = v1->screen_pos.x;
 				}
-				max_y = std::max(max_y, v2.screen_pos.y);
+
+				max_y = std::max(max_y, v2->screen_pos.y);
 			}
 
 			//create polygon table
-			int cover_y = round(max_y) - round(min_y);
+			int cover_y = floor(max_y) - floor(min_y);
 			if (cover_y > 0 && max_y > 0 && min_y < widget_height)
 			{
-				PolygonNode* polygon = new PolygonNode();
-				polygon->model_id = current_model;
-				polygon->polygon_id = j;
-				polygon->dy = cover_y;
+				PolygonNode* polygon = getPolygonNode();
+				polygon->polygon_id = polygon_id++;
 
 				//calculate normal
-				vec3 u(vd[1].position - vd[0].position), v(vd[2].position - vd[0].position);
-				glm::vec3 normal = glm::cross(u, v);
-				polygon->a = normal.x;
-				polygon->b = normal.y;
-				polygon->c = normal.z;
-				polygon->d = -(normal.x * vd[0].position.x + normal.y * vd[0].position.y + normal.z * vd[0].position.z);
+				face_normal = glm::normalize(face_normal);
+				polygon->a = face_normal.x;
+				polygon->b = face_normal.y;
+				polygon->c = face_normal.z;
+				polygon->d = -(face_normal.x * vd[0].position.x + face_normal.y * vd[0].position.y + face_normal.z * vd[0].position.z);
 
 				polygon->depth = depth;
-				int y_idx = round(min_y);
-				if (polygonTable[y_idx])
-					polygonTable[y_idx]->next = polygon;
-				else
-					polygonTable[y_idx] = polygon;
+				int y_idx = floor(min_y);
+				insertPolygon(y_idx, polygon);
 			}
 		}
 	}
 
-	current_model = -1;
-
 	// draw scan lines
-	static float* scanline = NULL;
-	if (scanline == NULL)
-		scanline = new float[widget_width];
-
-	activeEdgeTable.clear();
-	activePolygonTable.clear();
+	while (activeEdgeList)
+	{
+		ActiveEdgeNode* next = activeEdgeList->next;
+		releaseActiveEdgeNode(activeEdgeList);
+		activeEdgeList = next;
+	}
 
 	//scan y top to bottom
 	for (int y = 0; y < widget_height; y++)
@@ -280,299 +450,268 @@ void Renderer::drawByScanLine()
 			{
 				if (edge->polygon_id == polygon->polygon_id)
 				{
-					if (!e1)
-						e1 = edge;
-					else if (!e2)
-						e2 = edge;
-					else
+					// edges from same polygon always insert continually
+					e1 = edge;
+					e2 = edge->next;
+#ifdef _DEBUG
+					if(!e2)
 					{
-						WARN("error occur when generating active edge, 3 edges joint at same point.");
+						WARN("error occur when generating active edge, can't find 2 edge.");
 						abort();
 					}
+#endif
+					break;
 				}
 				edge = edge->next;
 			}
 
-			if (!e1 || !e2)
+			if (e1->x == e2->x)
 			{
-				WARN("error occur when generating active edge, can't find 2 edge.");
-				abort();
+				if(e1->dx > e2->dx)
+					std::swap(e1, e2);
 			}
-
-			int x1_left = e1->dx > 0 ? e1->x : (e1->x + e1->dx * e1->dy);
-			int x2_left = e2->dx > 0 ? e2->x : (e2->x + e2->dx * e2->dy);
-			if (x1_left > x2_left)
-			{
-				std::swap(x1_left, x2_left);
+			else if(e1->x > e2->x)
 				std::swap(e1, e2);
-			}
 
 			// e1 joint scan line first
-			ActiveEdgeNode* active_edge = new ActiveEdgeNode();
-			active_edge->x_left = x1_left;
+			ActiveEdgeNode* active_edge = getActiveEdgeNode();
+			active_edge->x_left = e1->x;
 			active_edge->dx_left = e1->dx;
-			active_edge->dy_left = e1->dy;
+			active_edge->end_x_left = e1->other_x;
+			active_edge->cover_y_left = e1->cover_y;
 
-			active_edge->x_right = x2_left;
+			active_edge->x_right = e2->x;
 			active_edge->dx_right = e2->dx;
-			active_edge->dy_right = e2->dy;
+			active_edge->end_x_right = e2->other_x;
+			active_edge->cover_y_right = e2->cover_y;
 
-			//TODO 
 			active_edge->depth_left = polygon->depth;
-			active_edge->depth_dx = -polygon->a / polygon->c;
-			active_edge->depth_dy = polygon->b / polygon->c;
+			if (abs(polygon->c) < 1e-3)//TODO reduce artifacts
+			{
+				active_edge->depth_dx = 0.0f;
+				active_edge->depth_dy = 0.0f;
+			}
+			else
+			{
+				float one_div_c = 1.0f / polygon->c;
+				active_edge->depth_dx = -doubleWidthInv * polygon->a * one_div_c;
+				active_edge->depth_dy = doubleHeightInv * polygon->b * one_div_c;
+			}
 
+			active_edge->polygon = polygon;
 			active_edge->polygon_id = polygon->polygon_id;
-			activeEdgeTable.push_back(active_edge);
+			insertActiveEdge(active_edge);
 
-			activePolygonTable.push_back(polygon);
 			polygon = polygon->next;
 		}
 
-		//TODO
-
-
-
-
-	}
-}
-
-void Renderer::draw()
-{
-	static VertexData vd[3];
-	//TODO
-	mView = camera->GetViewMatrix();
-	pv = mProjection * mView;
-
-	for (int i = 0; i < vModels.size(); i++)
-	{
-		current_model = i;
-		Model& model = vModels[i];
-		for(int j = 0; j < model.vTriangles.size(); j++)
+		// fill scan line
+		ActiveEdgeNode* prev_edge = NULL;
+		ActiveEdgeNode* active_edge = activeEdgeList;
+		while (active_edge)
 		{
-			Triangle& t = model.vTriangles[j];
-			for (int k = 0; k < 3; k++)
+			if (!(active_edge->x_left >= widget_width || active_edge->x_right < 0))
 			{
-				Vertex& v = t.vList[k];
-				
-				vd[k].position.x = model.vPositions[v.iPostion].x;
-				vd[k].position.y = model.vPositions[v.iPostion].y;
-				vd[k].position.z = model.vPositions[v.iPostion].z;
-				vd[k].position.w = 1.0f;
+				float depth = active_edge->depth_left;
+				for (int x = (int)(active_edge->x_left); x <= std::min((int)(active_edge->x_right), widget_width-1); x++)
+				{
+					if (x >=0 && (scanline[x] == 0 || scanline[x] > depth))
+					{
+						//TODO
+						Color visual = 0x00000000;
+						if (rType == RenderType::Depth)
+						{
+							int d = 255 * Clamp(depth, 0.0f, 1.0f);
+							visual = (d << 16) + (d << 8) + d;
+						}
+						else if (rType == RenderType::Normal)
+						{
+							//[-1,1] -> [0, 1]
+							int r = (active_edge->polygon->a + 1.0f) * 0.5f * 255;
+							int g = (active_edge->polygon->b + 1.0f) * 0.5f * 255;
+							int b = (active_edge->polygon->c + 1.0f) * 0.5f * 255;
 
-				vd[k].normal = model.vNormals[v.iNormal];
-				vd[k].normal.w = 0.0f;
+							visual = (r << 16) + (g << 8) + b;
+						}
 
-				vd[k].texcoord = model.vTexcoords[v.iTexcoord];
+						linebuffer[x] = visual;
+						scanline[x] = depth;
+					}
+
+					depth += active_edge->depth_dx;
+				}
 			}
 
-			drawTriangle(vd[0], vd[1], vd[2]);
-		}
-	}
+			//update to next line's active edge
+			active_edge->cover_y_left -= 1;
+			active_edge->cover_y_right -= 1;
 
-	current_model = -1;
-}
-
-inline void Renderer::drawPixel(int x, int y, Color color)
-{
-	if (x < 0 || x >= widget_width || y < 0 || y >= widget_height)
-		return;
-	framebuffer[y * widget_width + x] = color;
-}
-
-void Renderer::drawLine(vec2& p1, vec2& p2, Color color)
-{
-	int dx = p2.x - p1.x;
-	int dy = p2.y - p1.y;
-	int ux = ((dx > 0) << 1) - 1;	//x的增量方向
-	int uy = ((dy > 0) << 1) - 1;	//y的增量方向
-	int x = p1.x, y = p1.y, eps = 0;	//eps为累计误差
-
-	dx = abs(dx);
-	dy = abs(dy);
-
-	if (dx > dy) 
-	{
-		for (; x != (int)p2.x; x += ux)
-		{
-			drawPixel(x, y, color);
-			eps += dy;
-			if (!((eps << 1) < dx)) 
+			bool isChangeEdge = false;
+			if (active_edge->cover_y_left == 0 || active_edge->cover_y_right == 0)
 			{
-				y += uy;
-				eps -= dx;
+				if (active_edge->cover_y_left == 0 && active_edge->cover_y_right == 0)
+				{
+					// remove this active edge
+					ActiveEdgeNode* next = active_edge->next;
+					releaseActiveEdgeNode(active_edge) ;
+					if (!prev_edge)
+						activeEdgeList = next;
+					else
+						prev_edge->next = next;
+					active_edge = next;
+					continue;
+				}
+
+				// remove one of active-edge-pair's edge and add the new one
+				EdgeNode* edge = edgeTable[y];
+				while (edge)
+				{
+					if (edge->polygon_id == active_edge->polygon_id)
+						break;
+					edge = edge->next;
+				}
+#ifdef _DEBUG
+				if (!edge)
+				{
+					WARN("error occur when changeto another active edge, can't find 3rd edge.");
+					abort();
+				}
+#endif
+				if (active_edge->cover_y_left == 0)
+				{
+					active_edge->x_left = edge->x;
+					active_edge->dx_left = edge->dx;
+					active_edge->end_x_left = edge->other_x;
+					active_edge->cover_y_left = edge->cover_y - 1;
+				}
+				else 
+				{
+					active_edge->x_right = edge->x;
+					active_edge->dx_right = edge->dx;
+					active_edge->end_x_right = edge->other_x;
+					active_edge->cover_y_right = edge->cover_y - 1;
+				}
 			}
-		}
-	}
-	else {
-		for (; y != (int)p2.y; y += uy)
-		{
-			drawPixel(x, y, color);
-			eps += dx;
-			if (!((eps << 1) < dy)) 
-			{
-				x += ux;
-				eps -= dy;
-			}
+
+			active_edge->x_left += active_edge->dx_left;
+			active_edge->x_right += active_edge->dx_right;
+
+			// last step maybe too large
+			if (active_edge->cover_y_left == 1 && ((active_edge->dx_left < 0 && active_edge->x_left < active_edge->end_x_left)
+				|| (active_edge->dx_left > 0 && active_edge->x_left > active_edge->end_x_left)))
+				active_edge->x_left = active_edge->end_x_left;
+
+			if (active_edge->cover_y_right == 1 && ((active_edge->dx_right < 0 && active_edge->x_right < active_edge->end_x_right)
+				|| (active_edge->dx_right > 0 && active_edge->x_right > active_edge->end_x_right)))
+				active_edge->x_right = active_edge->end_x_right;
+
+			active_edge->depth_left += active_edge->dx_left * active_edge->depth_dx + active_edge->depth_dy;
+
+			prev_edge = active_edge;
+			active_edge = active_edge->next;
 		}
 	}
 }
 
-//TODO
 void Renderer::calScreenPos(VertexData& v)
 {
 	float w = v.position.w;
 	if (abs(w) < 1e-4) return;
 
-	//透视除法
+	//perspective division
 	float onePerW = 1.0f / w;
 	v.position = v.position * onePerW;
-	v.position.w = onePerW;//save depth info for depth test
 
-	//转化至屏幕坐标
-	v.screen_pos.x = (v.position.x + 1.0f) * 0.5f * widget_width;
-	v.screen_pos.y = (1.0f - v.position.y) * 0.5f * widget_height;
+	//save depth info for depth test
+	//v.position.w = onePerW;
+	
+	//ndc to screen pos
+	v.screen_pos.x = (v.position.x + 1.0f) * 0.5f * (widget_width - 1.0f);
+	v.screen_pos.y = (1.0f - v.position.y) * 0.5f * (widget_height - 1.0f);
 }
 
 int Renderer::clip(vec4& clip_pos)
 {
-	float w = clip_pos.w;//原来的z
+	//ndc's z
+	float w = clip_pos.w;
 	if (clip_pos.x > w || clip_pos.x < -w) return 1;
 	if (clip_pos.y > w || clip_pos.y < -w) return 1;
 	if (clip_pos.z > w || clip_pos.z < 0.0f) return 1;
 	return 0;
 }
 
-void Renderer::drawTriangle(VertexData& v1, VertexData& v2, VertexData& v3)
+void Renderer::insertPolygon(int y, PolygonNode* polygon)
 {
-	//local pos to world pos
-	v1.position = mModel * v1.position;
-	v2.position = mModel * v2.position;
-	v3.position = mModel * v3.position;
+	polygon->next = polygonTable[y];
+	polygonTable[y] = polygon;
+}
 
-	//背面消隐 正面看该三角形时 顶点顺序需满足 v1,v2,v3呈逆时针
-	if (rType != RenderType::Wireframe) 
+void Renderer::insertEdge(int y, EdgeNode* edge)
+{
+	edge->next = edgeTable[y];
+	edgeTable[y] = edge;
+}
+
+void Renderer::insertActiveEdge(ActiveEdgeNode* edge)
+{
+	edge->next = activeEdgeList;
+	activeEdgeList = edge;
+}
+
+PolygonNode* Renderer::getPolygonNode()
+{
+	if (polygonNodePool)
 	{
-		vec3 u(v2.position - v1.position), v(v3.position - v1.position);
-		glm::vec3 norl = glm::cross(u, v), view = camera->Position - v1.position.xyz();
-		float ans = glm::dot(norl, view);
-		if (ans > 0) return;
-	}
-
-	//world pos to clip pos
-	v1.position = pv * v1.position;
-	v2.position = pv * v2.position;
-	v3.position = pv * v3.position;
-
-	//粗略的裁剪 
-	// if (clip(v1.position) || clip(v2.position) || clip(v3.position)) return;
-
-	//clip pos to screen pos
-	calScreenPos(v1);
-	calScreenPos(v2);
-	calScreenPos(v3);
-
-	//绘制线框
-	if (rType == RenderType::Wireframe) 
-	{
-		Color wire_color = 0x000000ff;
-		drawLine(v1.screen_pos, v2.screen_pos, wire_color);
-		drawLine(v2.screen_pos, v3.screen_pos, wire_color);
-		drawLine(v3.screen_pos, v1.screen_pos, wire_color);
+		auto p = polygonNodePool;
+		polygonNodePool = polygonNodePool->next;
+		p->next = NULL;
+		return p;
 	}
 	else
-	{
-
-// 		glm::mat4 world_inverse_transpose = glm::transpose(glm::inverse(mModel));
-// 		v1.normal = world_inverse_transpose * v1.normal;
-// 		v2.normal = world_inverse_transpose * v2.normal;
-// 		v3.normal = world_inverse_transpose * v3.normal;
-
-		//sort by y to get v1.y < v2.y < v3.y
-		if (v1.screen_pos.y > v2.screen_pos.y)
-			std::swap(v1, v2);
-		if (v1.screen_pos.y > v3.screen_pos.y)
-			std::swap(v1, v3);
-		if (v2.screen_pos.y > v3.screen_pos.y)
-			std::swap(v2, v3);
-
-		VertexData left, right;
-		int top_y = floor(v3.screen_pos.y);
-		int mid_y = floor(v2.screen_pos.y);
-		int bottom_y = floor(v1.screen_pos.y);
-
-		//bottom part
-		if (mid_y > bottom_y)
-		{
-			for (int y = bottom_y + 1; y <= mid_y; y++)
-			{
-				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
-				right.interp(v1, v2, (y - v1.screen_pos.y) / (v2.screen_pos.y - v1.screen_pos.y));
-				left.screen_pos.y = y;
-				right.screen_pos.y = y;
-
-				if (left.screen_pos.x < right.screen_pos.x)
-					drawScanLine(left, right);
-				else
-					drawScanLine(right, left);
-			}
-		}
-
-		//top part
-		if (top_y > mid_y)
-		{
-			for (int y = mid_y + 1; y <= top_y; y++)
-			{
-				left.interp(v1, v3, (y - v1.screen_pos.y) / (v3.screen_pos.y - v1.screen_pos.y));
-				right.interp(v2, v3, (y - v2.screen_pos.y) / (v3.screen_pos.y - v2.screen_pos.y));
-				left.screen_pos.y = y;
-				right.screen_pos.y = y;
-
-				if (left.screen_pos.x < right.screen_pos.x)
-					drawScanLine(left, right);
-				else
-					drawScanLine(right, left);
-			}
-		}
-	}
+		return new PolygonNode();
 }
 
-void Renderer::drawScanLine(VertexData& v1, VertexData& v2)
+EdgeNode* Renderer::getEdgeNode() 
 {
-	int y = v1.screen_pos.y;
-	float x1 = v1.screen_pos.x, x2 = v2.screen_pos.x;
-
-	for (int x = floor(x1) + 1; x <= x2; x++) 
+	if (edgeNodePool)
 	{
-		float g = (x2 - x1 < 1e-4) ? 1.0f : (x - x1) / (x2 - x1);
-		float depth = Interp(v1.position.w, v2.position.w, g);
-		if (y < 0 || y >= widget_height || x < 0 || x >= widget_width)
-			continue;
-
-		if (zbuffer[y * widget_width + x] < depth)
-		{
-			float u = (float)Interp(v1.texcoord.x, v2.texcoord.x, g);
-			float v = (float)Interp(v1.texcoord.y, v2.texcoord.y, g);
-
-			if (rType == RenderType::Texture)
-			{
-				Color pixel_color = vModels[current_model].readAlbedo(u, v);
-				drawPixel(x, y, pixel_color);
-			}
-			else if (rType == RenderType::Depth)
-			{
-				int d = 255 * Clamp(depth, 0.0f, 1.0f);
-				Color visual = (d << 16) + (d << 8) + d;
-				drawPixel(x, y, visual);
-			}
-			else if (rType == RenderType::Texcoords)
-			{
-				Color visual = ((int)(255 * u) << 8) + (int)(255 * v);
-				drawPixel(x, y, visual);
-			}
-
-			//update zbuffer
-			zbuffer[y * widget_width + x] = depth;
-		}
+		auto p = edgeNodePool;
+		edgeNodePool = edgeNodePool->next;
+		p->next = NULL;
+		return p;
 	}
+	else
+		return new EdgeNode();
 }
+
+ActiveEdgeNode* Renderer::getActiveEdgeNode()
+{
+	if (activeEdgeNodePool)
+	{
+		auto p = activeEdgeNodePool;
+		activeEdgeNodePool = activeEdgeNodePool->next;
+		p->next = NULL;
+		return p;
+	}
+	else
+		return new ActiveEdgeNode();
+}
+
+void Renderer::releasePolygonNode(PolygonNode* p)
+{
+	p->next = polygonNodePool;
+	polygonNodePool = p;
+}
+
+void Renderer::releaseEdgeNode(EdgeNode* p)
+{
+	p->next = edgeNodePool;
+	edgeNodePool = p;
+}
+
+void Renderer::releaseActiveEdgeNode(ActiveEdgeNode* p)
+{
+	p->next = activeEdgeNodePool;
+	activeEdgeNodePool = p;
+}
+

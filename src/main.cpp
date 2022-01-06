@@ -11,8 +11,8 @@ int parse_arg(int argc, char** argv);
 void keyboard_input(float deltaTime = 0.0f);
 void mouse_input();
 
-unsigned int widget_width = 1024;
-unsigned int widget_height = 768;
+unsigned int widget_width = 512;
+unsigned int widget_height = 512;
 
 Renderer* renderer = NULL;
 
@@ -32,10 +32,10 @@ int main(int argc, char** argv)
 	//init renderer
 	renderer = new Renderer(widget_width, widget_height);
 	renderer->bindFrameBuffer(widget->widget_fbuffer);
-	//renderer->isScanlineZbufferAlgo = true;
 
 	//load model
-	renderer->loadCude();
+	//renderer->loadCude();
+	renderer->loadModel("../resource/bunny.obj");
 
 	//time
 	float lastFrame = 0.0f;
@@ -51,11 +51,10 @@ int main(int argc, char** argv)
 
 		lastFrame = (float)start / CLOCKS_PER_SEC;
 
+		start = clock();
 		//rendering
-		renderer->clearDepthBuffer();
 		renderer->clearFrameBuffer();
 		renderer->draw();
-		//renderer->drawByScanLine();
 		clock_t end = clock();
 
 		int dur = end - start;
@@ -100,24 +99,23 @@ void keyboard_input(float deltaTime)
 		widget->widget_exit = 1;
 
 	if (GetKeyState(VK_LSHIFT) < 0)
-		camera->MovementSpeed = camera_run_speed;
+		camera->MovementSpeed = camera->camera_run_speed;
 	else
-		camera->MovementSpeed = camera_walk_speed;
+		camera->MovementSpeed = camera->camera_walk_speed;
 
 	if (keys['W'])
-		camera->ProcessKeyboard(FORWARD, deltaTime);
+		renderer->moveCamera(FORWARD, deltaTime);
 	if (keys['S'])
-		camera->ProcessKeyboard(BACKWARD, deltaTime);
+		renderer->moveCamera(BACKWARD, deltaTime);
 	if (keys['A'])
-		camera->ProcessKeyboard(LEFT, deltaTime);
+		renderer->moveCamera(LEFT, deltaTime);
 	if (keys['D'])
-		camera->ProcessKeyboard(RIGHT, deltaTime);
+		renderer->moveCamera(RIGHT, deltaTime);
 	if (keys['E'])
-		camera->ProcessKeyboard(UP, deltaTime);
+		renderer->moveCamera(UP, deltaTime);
 	if (keys['Q'])
-		camera->ProcessKeyboard(DOWN, deltaTime);
+		renderer->moveCamera(DOWN, deltaTime);
 
-	//TODO
 	if (keys[VK_SPACE])
 	{
 		renderer->rType = (renderer->rType + 1) % Renderer::RenderType::Count;
@@ -148,7 +146,7 @@ void mouse_input()
 		info.pos.x = current.x;
 		info.pos.y = current.y;
 
-		renderer->camera->ProcessMouseMovement(xoffset, yoffset);
+		renderer->rotateCamera(xoffset, yoffset);
 	}
 	else //release
 		handle_pressed = false;
