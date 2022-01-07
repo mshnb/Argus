@@ -205,7 +205,8 @@ void Renderer::loadModel(std::string path)
 	// check for errors
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) // if is Not Zero
 	{
-		WARN("Error occur in loading model:%s, error info:%s", path, importer.GetErrorString());
+		WARN("Error occur in loading model:%s, error info:%s", path.c_str(), importer.GetErrorString());
+		getchar();
 		abort();
 	}
 

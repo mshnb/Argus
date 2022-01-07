@@ -11,9 +11,11 @@ int parse_arg(int argc, char** argv);
 void keyboard_input(float deltaTime = 0.0f);
 void mouse_input();
 
-unsigned int widget_width = 1024;
-unsigned int widget_height = 1024;
+unsigned int widget_width = 512;
+unsigned int widget_height = 512;
 
+std::string renderTypeStr = "normal";
+std::string input_path = "../resource/bunny_40k.obj";
 Renderer* renderer = NULL;
 
 int main(int argc, char** argv)
@@ -35,7 +37,7 @@ int main(int argc, char** argv)
 
 	//load model
 	//renderer->loadCude();
-	renderer->loadModel("../resource/bunny_40k.obj");
+	renderer->loadModel(input_path);
 
 	//time
 	float lastFrame = 0.0f;
@@ -60,6 +62,7 @@ int main(int argc, char** argv)
 		int dur = end - start;
 		int fps = cal_fps(dur);
 		widget_print("fps:" + std::to_string(fps));
+		widget_print("mode:" + renderTypeStr);
 		widget_tick();
 	}
 
@@ -69,9 +72,13 @@ int main(int argc, char** argv)
 
 int parse_arg(int argc, char** argv)
 {
-	for (size_t i = 1; i < argc; i++) 
+	for (size_t i = 1; i < argc; ) 
 	{
-		if (!strcmp(argv[i], "-w")) 
+		if (!strcmp(argv[i], "-i")) {
+			++i; if (i >= argc) { return -1; }
+			input_path = argv[i++];
+		}
+		else if (!strcmp(argv[i], "-w")) 
 		{
 			++i; if (i >= argc) { return -1; }
 			widget_width = std::stoi(argv[i++]);
@@ -119,6 +126,7 @@ void keyboard_input(float deltaTime)
 	if (keys[VK_SPACE])
 	{
 		renderer->rType = (renderer->rType + 1) % Renderer::RenderType::Count;
+		renderTypeStr = renderer->rType == Renderer::RenderType::Normal ? "normal" : "depth";
 		keys[VK_SPACE] = 0;
 	}
 }

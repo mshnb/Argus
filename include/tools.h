@@ -23,7 +23,7 @@
 #define INFO(...) PRINT('I', __VA_ARGS__)
 #define WARN(...) PRINT('W', __VA_ARGS__)
 
-#define CHECK(status) if(status){ERROR("check failed with err .\n", status);}
+#define CHECK(status) if(status!=0){ERROR("check failed with err .\n", status);}
 
 //typedef unsigned int Color;
 typedef union Color
