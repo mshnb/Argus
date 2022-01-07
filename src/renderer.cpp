@@ -125,7 +125,7 @@ void Renderer::resetCamera()
 
 	camera->tNear = 0.1f * radius;
 	camera->tFar = 2.5f * radius;
-	camera->Position = bounding_center - 2.f * radius * camera->Front;
+	camera->Position = bounding_center - 1.5f * radius * camera->Front;
 	camera->camera_walk_speed = radius * 2.5f;
 	camera->camera_run_speed = camera->camera_walk_speed * 3.0f;
 
@@ -210,6 +210,9 @@ void Renderer::loadModel(std::string path)
 		abort();
 	}
 
+	int numVerticesTotal = 0;
+	int numFacesTotal = 0;
+
 	for (int i = 0; i < scene->mNumMeshes; i++)
 	{
 		aiMesh* ai_mesh = scene->mMeshes[i];
@@ -240,9 +243,13 @@ void Renderer::loadModel(std::string path)
 				bounding_max.z = std::max(bounding_max.z, v.z);
 			}
 		}
+
+		numVerticesTotal += numVertices;
+		numFacesTotal += numFaces;
 	}
 
 	resetCamera();
+	INFO("%s loaded with %d vertex and %d faces.", path.c_str(), numVerticesTotal, numFacesTotal);
 }
 
 void Renderer::draw()
@@ -482,9 +489,9 @@ void Renderer::draw()
 			if (!(active_edge->x_left >= widget_width || active_edge->x_right < 0))
 			{
 				float depth = active_edge->depth_left;
-				for (int x = (int)(active_edge->x_left); x <= std::min((int)(active_edge->x_right), widget_width-1); x++)
+				for (int x = (int)(active_edge->x_left); x <= (int)(active_edge->x_right); x++)
 				{
-					if (x >=0 && (scanline[x] == 0 || scanline[x] > depth))
+					if (scanline[x] == 0 || scanline[x] > depth)
 					{
 						Color visual = 0x00000000;
 						if (rType == RenderType::Depth)

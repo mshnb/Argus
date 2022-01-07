@@ -7,7 +7,7 @@ Argus was appointed by the goddess Hera to watch the cow into which Io (Hera’s
 
 I named my scanline z-buffer renderer "Argus" because it's scanlines can capture every pixel's depth fast and accurately just as Argus's eyes.
 
-Argus can render bunny with 60k triangles in 60fps using a intel i7 8700k cpu.
+Argus can render bunny with 69k triangles in 60fps using a intel i7 8700k cpu.
 
 ## Getting Started
 ```bash

@@ -16,6 +16,7 @@ unsigned int widget_height = 512;
 
 std::string renderTypeStr = "normal";
 std::string input_path = "../resource/bunny_40k.obj";
+
 Renderer* renderer = NULL;
 
 int main(int argc, char** argv)
