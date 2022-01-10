@@ -421,6 +421,8 @@ void Renderer::draw()
 		{
 			EdgeNode* e1 = NULL;
 			EdgeNode* e2 = NULL;
+
+			EdgeNode* prev_edge = NULL;
 			EdgeNode* edge = edgeTable[y];
 			while (edge)
 			{
@@ -436,8 +438,16 @@ void Renderer::draw()
 						abort();
 					}
 #endif
+					//remove this edge from edgelist
+					if (prev_edge)
+						prev_edge->next = e2->next;
+					else
+						edgeTable[y] = e2->next;
+
 					break;
 				}
+
+				prev_edge = edge;
 				edge = edge->next;
 			}
 
@@ -474,6 +484,9 @@ void Renderer::draw()
 				active_edge->depth_dy = doubleHeightInv * polygon->b * one_div_c;
 			}
 
+			releaseEdgeNode(e1);
+			releaseEdgeNode(e2);
+
 			active_edge->polygon = polygon;
 			active_edge->polygon_id = polygon->polygon_id;
 			insertActiveEdge(active_edge);
@@ -482,7 +495,7 @@ void Renderer::draw()
 		}
 
 		// fill scan line
-		ActiveEdgeNode* prev_edge = NULL;
+		ActiveEdgeNode* prev_active_edge = NULL;
 		ActiveEdgeNode* active_edge = activeEdgeList;
 		while (active_edge)
 		{
@@ -542,20 +555,29 @@ void Renderer::draw()
 					// remove this active edges pair
 					ActiveEdgeNode* next = active_edge->next;
 					releaseActiveEdgeNode(active_edge) ;
-					if (!prev_edge)
+					if (!prev_active_edge)
 						activeEdgeList = next;
 					else
-						prev_edge->next = next;
+						prev_active_edge->next = next;
 					active_edge = next;
 					continue;
 				}
 
 				// remove one of active-edge-pair's edge and add the new one
+				EdgeNode* prev_edge = NULL;
 				EdgeNode* edge = edgeTable[y];
 				while (edge)
 				{
 					if (edge->polygon_id == active_edge->polygon_id)
+					{
+						//remove this edge
+						if (!prev_edge)
+							edgeTable[y] = edge->next;
+						else
+							prev_edge->next = edge->next;
 						break;
+					}
+					prev_edge = edge;
 					edge = edge->next;
 				}
 #ifdef _DEBUG
@@ -580,6 +602,8 @@ void Renderer::draw()
 					active_edge->end_x_right = edge->other_x;
 					active_edge->cover_y_right = edge->cover_y - 1;
 				}
+
+				releaseEdgeNode(edge);
 			}
 
 			//update point's x for left and right edges
@@ -595,7 +619,7 @@ void Renderer::draw()
 				|| (active_edge->dx_right > 0 && active_edge->x_right > active_edge->end_x_right)))
 				active_edge->x_right = active_edge->end_x_right;
 
-			prev_edge = active_edge;
+			prev_active_edge = active_edge;
 			active_edge = active_edge->next;
 		}
 	}
